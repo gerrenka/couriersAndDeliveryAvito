@@ -7,21 +7,24 @@ import (
 	"avito/internal/service"
 	"avito/internal/usecase"
 	"context"
-	"fmt"
-	"log"
-	"net/http"
-	"os/signal"
-	"os"
 	"errors"
-	"syscall"
+	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"time"
 	flag "github.com/spf13/pflag"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 )
 
 func main() {
+	//  проверка каждые 10 секунд по задани.
+
 	//загружаем env
 	if err := godotenv.Load(); err != nil {
 		fmt.Println("Не удалось загрузить .env:", err)
@@ -54,12 +57,48 @@ func main() {
 	//запускаем
 	repo := repository.NewPostgresCourierRepository(pool)
 
-	deliveryRepo:=repository.NewDeliveryRepository()
+	deliveryRepo := repository.NewDeliveryRepository()
 	timeFactory := factory.DeliveryTimeFactory{}
-	deliveryUsecase:=usecase.NewDeliveryUsecase(pool, repo, deliveryRepo, timeFactory)
+	deliveryUsecase := usecase.NewDeliveryUsecase(pool, repo, deliveryRepo, timeFactory)
 	deliveryHandler := handlers.NewDeliveryHandler(deliveryUsecase)
+
 	svc := service.NewCourierService(repo)
-	h:= handlers.NewCourierHandler(svc)
+	h := handlers.NewCourierHandler(svc)
+
+	intervalStr := os.Getenv("CHECK_INTERVAL")
+	if intervalStr == "" {
+		intervalStr = "10s"
+	}
+	interval, err := time.ParseDuration(intervalStr)
+	if err != nil {
+		log.Fatal("некорректный CHECK_INTERVAL:", err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n, err := deliveryUsecase.ReleaseExpired(ctx)
+				if err != nil {
+					log.Println("ошибка освобождения курьеров:", err)
+					continue
+				}
+				if n > 0 {
+					log.Printf("освобождено курьеров: %d", n)
+				}
+			}
+		}
+	}()
 
 	r := chi.NewRouter()
 	r.Get("/ping", h.Ping)
@@ -70,17 +109,13 @@ func main() {
 	r.Put("/courier/{id}", h.Update)
 
 	r.Delete("/courier/{id}", h.Delete)
-	
+
 	r.Post("/delivery/assign", deliveryHandler.Assign)
 	r.Post("/delivery/unassign", deliveryHandler.Unassign)
 
 	addr := ":" + *port
 	fmt.Println("Сервер запущен на", addr)
 
-
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 	srv := &http.Server{Addr: addr, Handler: r}
 	errCh := make(chan error, 1)
 	go func() {
@@ -101,5 +136,5 @@ func main() {
 			fmt.Println("ошибка при остановке сервера:", err)
 		}
 	}
-
+	wg.Wait()
 }

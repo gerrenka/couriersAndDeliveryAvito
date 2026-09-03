@@ -3,10 +3,10 @@ package repository
 import (
 	"avito/internal/model"
 	"context"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresCourierRepository struct {
@@ -31,7 +31,6 @@ func (r *PostgresCourierRepository) CreateCourier(ctx context.Context, name, pho
 	}
 	return cour, nil
 
-
 }
 
 func (r *PostgresCourierRepository) UpdateCourier(ctx context.Context, id int, name, phone, status, transport_type string) (model.Courier, error) {
@@ -39,9 +38,9 @@ func (r *PostgresCourierRepository) UpdateCourier(ctx context.Context, id int, n
 	var c model.Courier
 	err := r.db.QueryRow(ctx, query, name, phone, status, transport_type, id).Scan(&c.ID, &c.Name, &c.Phone, &c.Status, &c.CreatedAt, &c.UpdatedAt, &c.TransportType)
 	if errors.Is(err, pgx.ErrNoRows) {
-    return model.Courier{}, model.ErrCourierNotFound
-}
-var pgErr *pgconn.PgError
+		return model.Courier{}, model.ErrCourierNotFound
+	}
+	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return model.Courier{}, model.ErrPhoneExists
 	}
@@ -57,11 +56,11 @@ func (r *PostgresCourierRepository) GetById(ctx context.Context, id int) (model.
 	var cour model.Courier
 	err := r.db.QueryRow(ctx, query, id).Scan(&cour.ID, &cour.Name, &cour.Phone, &cour.Status, &cour.CreatedAt, &cour.UpdatedAt, &cour.TransportType)
 	if errors.Is(err, pgx.ErrNoRows) {
-    return model.Courier{}, model.ErrCourierNotFound
-}
-if err != nil {
-    return model.Courier{}, err
-}
+		return model.Courier{}, model.ErrCourierNotFound
+	}
+	if err != nil {
+		return model.Courier{}, err
+	}
 	return cour, nil
 }
 
@@ -93,31 +92,31 @@ func (r *PostgresCourierRepository) DeleteCourier(ctx context.Context, id int) e
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-    return model.ErrCourierNotFound
-}
+		return model.ErrCourierNotFound
+	}
 	return nil
 }
 
-func (r *PostgresCourierRepository) FindAvailable (ctx context.Context, tx pgx.Tx) (model.Courier, error) {
+func (r *PostgresCourierRepository) FindAvailable(ctx context.Context, tx pgx.Tx) (model.Courier, error) {
 	var cour model.Courier
 	query := `SELECT id, name, phone, status, created_at, updated_at, transport_type  FROM couriers WHERE status = 'available'`
 	err := tx.QueryRow(ctx, query).Scan(&cour.ID, &cour.Name, &cour.Phone, &cour.Status, &cour.CreatedAt, &cour.UpdatedAt, &cour.TransportType)
 	if errors.Is(err, pgx.ErrNoRows) {
-    return model.Courier{}, model.ErrCourierNotAvailable
-}
-if err != nil {
-    return model.Courier{}, err
-}
+		return model.Courier{}, model.ErrCourierNotAvailable
+	}
+	if err != nil {
+		return model.Courier{}, err
+	}
 	return cour, nil
 }
 
-func (r *PostgresCourierRepository) UpdateStatus (ctx context.Context, tx pgx.Tx, id int, status string) (error) {
+func (r *PostgresCourierRepository) UpdateStatus(ctx context.Context, tx pgx.Tx, id int, status string) error {
 	cmd, err := tx.Exec(ctx, `UPDATE couriers SET status = $1 WHERE id = $2`, status, id)
 	if err != nil {
 		return err
 	}
-if cmd.RowsAffected() == 0 {
-    return model.ErrCourierNotFound
-}
+	if cmd.RowsAffected() == 0 {
+		return model.ErrCourierNotFound
+	}
 	return nil
 }

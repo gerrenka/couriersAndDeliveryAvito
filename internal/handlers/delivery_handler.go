@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-
 )
 
 type DeliveryUsecase interface {
@@ -24,7 +23,7 @@ func NewDeliveryHandler(use DeliveryUsecase) *DeliveryHandler {
 	}
 }
 
-func (h *DeliveryHandler) Assign (w http.ResponseWriter, r *http.Request) {
+func (h *DeliveryHandler) Assign(w http.ResponseWriter, r *http.Request) {
 	var req model.OrderIDRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -33,7 +32,7 @@ func (h *DeliveryHandler) Assign (w http.ResponseWriter, r *http.Request) {
 	}
 	deli, err := h.use.Assign(r.Context(), req.OrderID)
 	if errors.Is(err, model.ErrCourierNotAvailable) {
-    http.Error(w, err.Error(), http.StatusConflict)
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	if err != nil {
@@ -46,7 +45,7 @@ func (h *DeliveryHandler) Assign (w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *DeliveryHandler) Unassign (w http.ResponseWriter, r *http.Request){
+func (h *DeliveryHandler) Unassign(w http.ResponseWriter, r *http.Request) {
 	var req model.OrderIDRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -55,7 +54,7 @@ func (h *DeliveryHandler) Unassign (w http.ResponseWriter, r *http.Request){
 	}
 	deli, err := h.use.Unassign(r.Context(), req.OrderID)
 	if errors.Is(err, model.ErrCourierNotOrder) {
-    http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	if err != nil {

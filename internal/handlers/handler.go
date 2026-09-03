@@ -42,7 +42,7 @@ func (h *CourierHandler) Healthcheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CourierHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req model.CreateCourierRequest							/// курьер с таким телефоном сущ
+	var req model.CreateCourierRequest /// курьер с таким телефоном сущ
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -56,7 +56,7 @@ func (h *CourierHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//
-		if errors.Is(err, model.ErrPhoneExists) {
+	if errors.Is(err, model.ErrPhoneExists) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
@@ -73,7 +73,7 @@ func (h *CourierHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *CourierHandler) List(w http.ResponseWriter, r *http.Request) {
 	couriers, err := h.serv.GetAllCourier(r.Context())
 	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)	// нужен ли?
+		http.Error(w, "Database error", http.StatusInternalServerError) // нужен ли?
 		return
 	}
 
@@ -96,7 +96,7 @@ func (h *CourierHandler) GetById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)	//под вопросом нужен ли
+		http.Error(w, "Database error", http.StatusInternalServerError) //под вопросом нужен ли
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -135,7 +135,7 @@ func (h *CourierHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	//
 	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)	// возможно не нужен
+		http.Error(w, "Database error", http.StatusInternalServerError) // возможно не нужен
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -143,7 +143,7 @@ func (h *CourierHandler) Update(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(c)
 }
 
-func (h *CourierHandler) Delete(w http.ResponseWriter, r *http.Request) {	// в задании не написано писать
+func (h *CourierHandler) Delete(w http.ResponseWriter, r *http.Request) { // в задании не написано писать
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
