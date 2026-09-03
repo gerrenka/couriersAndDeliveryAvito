@@ -106,7 +106,7 @@ func main() {
 	r.Post("/courier", h.Create)
 	r.Get("/couriers", h.List)
 	r.Get("/courier/{id}", h.GetById)
-	r.Put("/courier/{id}", h.Update)
+	r.Put("/courier", h.Update)
 
 	r.Delete("/courier/{id}", h.Delete)
 

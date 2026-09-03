@@ -97,9 +97,21 @@ func (r *PostgresCourierRepository) DeleteCourier(ctx context.Context, id int) e
 	return nil
 }
 
+// Блок В — равномерное распределение. Переписать FindAvailable: LEFT JOIN к подсчёту завершённых доставок,
+// ORDER BY count ASC LIMIT 1, плюс блокировка строки.
+
 func (r *PostgresCourierRepository) FindAvailable(ctx context.Context, tx pgx.Tx) (model.Courier, error) {
 	var cour model.Courier
-	query := `SELECT id, name, phone, status, created_at, updated_at, transport_type  FROM couriers WHERE status = 'available'`
+	query :=
+		`SELECT c.id, c.name, c.phone, c.status, c.created_at, c.updated_at, c.transport_type  
+	FROM couriers c 
+	LEFT JOIN (SELECT courier_id, COUNT(*) AS cnt
+		FROM delivery
+		WHERE status = 'completed'
+		GROUP BY courier_id) d ON c.id = d.courier_id 
+	WHERE c.status = 'available' ORDER BY COALESCE(d.cnt, 0), c.id
+	LIMIT 1
+	FOR UPDATE OF c SKIP LOCKED`
 	err := tx.QueryRow(ctx, query).Scan(&cour.ID, &cour.Name, &cour.Phone, &cour.Status, &cour.CreatedAt, &cour.UpdatedAt, &cour.TransportType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Courier{}, model.ErrCourierNotAvailable
