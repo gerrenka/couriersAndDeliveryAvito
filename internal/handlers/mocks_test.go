@@ -1,15 +1,8 @@
 package handlers
 
 import (
-    // "net/http"
-    // "net/http/httptest" // Импортируем инструмент для HTTP-тестов
-    // "testing"
-	// "bytes"
 	"context"
 	"avito/internal/model"
-// 	"strings"
-// 	"avito/internal/service"
-// 	"errors"
 )
 type MockCourierService struct {
 	ReturnCourier model.Courier
@@ -20,6 +13,7 @@ type MockCourierService struct {
 	CalledStatus    string
 	CalledTransport string
 	CallCount       int
+	ReturnCouriers  []model.Courier
 }
 
 func (m *MockCourierService) CreateCourier(ctx context.Context, name, phone, status, transport string) (model.Courier, error) {

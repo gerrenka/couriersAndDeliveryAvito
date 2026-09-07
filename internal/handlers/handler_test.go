@@ -4,8 +4,7 @@ import (
     "net/http"
     "net/http/httptest"
     "testing"
-	"bytes"
-	// "context"
+
 	"avito/internal/model"
 	"strings"
 	"avito/internal/service"
@@ -30,123 +29,323 @@ func TestHealthcheck(t *testing.T) {
 }
 
 
-func TestCreate(t *testing.T) {
-    jsonBody := []byte(`{"name":"Иван","phone":"+79001234567","status":"available","transport_type":"bike"}`)
-    
-    req := httptest.NewRequest("POST", "/courier", bytes.NewBuffer(jsonBody))
-    req.Header.Set("Content-Type", "application/json") 
-    
-    rr := httptest.NewRecorder()
-
-    mockService := &MockCourierService{
-    ReturnCourier: model.Courier{ID: 1, Name: "Иван"},
-}
-    crh := &CourierHandler{
-        serv: mockService, 
-    }
-
-    crh.Create(rr, req)
-
-    if rr.Code != http.StatusCreated { 
-        t.Errorf("Ожидался статус 201, но получили %d", rr.Code)
-    }
-
-    if mockService.CalledName != "Иван" {
-        t.Errorf("Сервис не был вызван с именем Иван")
-    }
-}
-
-func TestCreate_ServiceValidationError(t *testing.T) {
+func TestCourierHandler_Create(t *testing.T) {
 	t.Parallel()
 
-	body := `{"name":"Иван","phone":"+79001234567","status":"летит","transport_type":"bike"}`
-	req := httptest.NewRequest(http.MethodPost, "/courier", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
+	tests := []struct {
+		name          string
+		body          string
+		mockErr       error
+		wantCode      int
+		wantCallCount int
+	}{
+		{
+			name:          "успех",
+			body:          `{"name":"Иван","phone":"+79001234567","status":"available","transport_type":"bike"}`,
+			wantCode:      http.StatusCreated,
+			wantCallCount: 1,
+		},
+		{
+			name:          "битый json",
+			body:          `{`,
+			wantCode:      http.StatusBadRequest,
+			wantCallCount: 0,
+		},
+		{
+			name:          "невалидный статус",
+			body:          `{"name":"Иван","phone":"+79001234567","status":"летит"}`,
+			mockErr:       service.ErrInvalidStatus,
+			wantCode:      http.StatusBadRequest,
+			wantCallCount: 1,
+		},
+		{
+			name:          "ошибка бд",
+			body:          `{"name":"Иван","phone":"+79001234567","status":"available"}`,
+			mockErr:       errors.New("connection refused"),
+			wantCode:      http.StatusInternalServerError,
+			wantCallCount: 1,
+		},
+	}
 
-	mockService := &MockCourierService{ReturnError: service.ErrInvalidStatus}
-	crh := &CourierHandler{serv: mockService}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	crh.Create(rr, req)
+			req := httptest.NewRequest(http.MethodPost, "/courier", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
 
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("Ожидался статус 400, получили %d", rr.Code)
+			mockService := &MockCourierService{
+				ReturnCourier: model.Courier{ID: 1, Name: "Иван"},
+				ReturnError:   tt.mockErr,
+			}
+			crh := &CourierHandler{serv: mockService}
+
+			crh.Create(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("Ожидался %d, получили %d", tt.wantCode, rr.Code)
+			}
+			if mockService.CallCount != tt.wantCallCount {
+				t.Errorf("Ожидали %d вызовов, было %d", tt.wantCallCount, mockService.CallCount)
+			}
+		})
 	}
 }
 
 
-func TestCreate_BadJSON(t *testing.T) {
+func TestCourierHandler_Update(t *testing.T) {
 	t.Parallel()
 
-	req := httptest.NewRequest(http.MethodPost, "/courier", strings.NewReader("{"))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	mockService := &MockCourierService{}
-	crh := &CourierHandler{serv: mockService}
-
-	crh.Create(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("Ожидался статус 400, получили %d", rr.Code)
+	tests := []struct {
+		name          string
+		id            string
+		body          string
+		mockErr       error
+		wantCode      int
+		wantCallCount int
+	}{
+		{
+			name:          "успех",
+			id:            "123",
+			body:          `{"name":"Иван","phone":"+79001234567","status":"available","transport_type":"bike"}`,
+			wantCode:      http.StatusOK,
+			wantCallCount: 1,
+		},
+		{
+			name:          "нечисловой id",
+			id:            "abc",
+			body:          `{"name":"Иван","phone":"+79001234567","status":"available"}`,
+			wantCode:      http.StatusBadRequest,
+			wantCallCount: 0,
+		},
+		{
+			name:          "битый json",
+			id:            "123",
+			body:          `{`,
+			wantCode:      http.StatusBadRequest,
+			wantCallCount: 0,
+		},
+		{
+			name:          "невалидный статус",
+			id:            "123",
+			body:          `{"name":"Иван","phone":"+79001234567","status":"летит"}`,
+			mockErr:       service.ErrInvalidStatus,
+			wantCode:      http.StatusBadRequest,
+			wantCallCount: 1,
+		},
+		{
+			name:          "ошибка бд",
+			id:            "123",
+			body:          `{"name":"Иван","phone":"+79001234567","status":"available"}`,
+			mockErr:       errors.New("connection refused"),
+			wantCode:      http.StatusInternalServerError,
+			wantCallCount: 1,
+		},
 	}
 
-	if mockService.CallCount != 0 {
-		t.Errorf("Сервис не должен вызываться при битом JSON, вызван %d раз", mockService.CallCount)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockService := &MockCourierService{
+				ReturnCourier: model.Courier{ID: 123, Name: "Иван"},
+				ReturnError:   tt.mockErr,
+			}
+			crh := &CourierHandler{serv: mockService}
+
+			router := chi.NewRouter()
+			router.Put("/courier/{id}", crh.Update)
+
+			req := httptest.NewRequest(http.MethodPut, "/courier/"+tt.id, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+
+			router.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("Ожидался %d, получили %d, тело: %s", tt.wantCode, rr.Code, rr.Body.String())
+			}
+			if mockService.CallCount != tt.wantCallCount {
+				t.Errorf("Ожидали %d вызовов сервиса, было %d", tt.wantCallCount, mockService.CallCount)
+			}
+		})
 	}
 }
-func TestCreate_ServiceInternalError(t *testing.T) {
+
+func TestCourierHandler_GetById(t *testing.T) {
 	t.Parallel()
 
-	body := `{"name":"Иван","phone":"+79001234567","status":"available","transport_type":"bike"}`
-	req := httptest.NewRequest(http.MethodPost, "/courier", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
+	tests := []struct {
+		name          string
+		id            string
+		mockErr       error
+		wantCode      int
+		wantCallCount int
+	}{
+		{
+			name:          "успех",
+			id:            "123",
+			wantCode:      http.StatusOK,
+			wantCallCount: 1,
+		},
+		{
+			name:          "нечисловой id",
+			id:            "abc",
+			wantCode:      http.StatusBadRequest,
+			wantCallCount: 0,
+		},
+		{
+			name:          "курьер не найден",
+			id:            "999",
+			mockErr:       model.ErrCourierNotFound,
+			wantCode:      http.StatusNotFound,
+			wantCallCount: 1,
+		},
+		{
+			name:          "ошибка бд",
+			id:            "123",
+			mockErr:       errors.New("connection refused"),
+			wantCode:      http.StatusInternalServerError,
+			wantCallCount: 1,
+		},
+	}
 
-	mockService := &MockCourierService{ReturnError: errors.New("connection refused")}
-	crh := &CourierHandler{serv: mockService}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	crh.Create(rr, req)
+			mockService := &MockCourierService{
+				ReturnCourier: model.Courier{ID: 123, Name: "Иван"},
+				ReturnError:   tt.mockErr,
+			}
+			crh := &CourierHandler{serv: mockService}
 
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("Ожидался статус 500, получили %d", rr.Code)
+			router := chi.NewRouter()
+			router.Get("/courier/{id}", crh.GetById)
+
+			req := httptest.NewRequest(http.MethodGet, "/courier/"+tt.id, nil)
+			rr := httptest.NewRecorder()
+
+			router.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("Ожидался %d, получили %d, тело: %s", tt.wantCode, rr.Code, rr.Body.String())
+			}
+			if mockService.CallCount != tt.wantCallCount {
+				t.Errorf("Ожидали %d вызовов, было %d", tt.wantCallCount, mockService.CallCount)
+			}
+		})
 	}
 }
 
-
-func TestGetById(t *testing.T) {
+func TestCourierHandler_Delete(t *testing.T) {
 	t.Parallel()
-	req := httptest.NewRequest(http.MethodGet, "/courier/123", nil)
-	rr := httptest.NewRecorder()
-	mockService := &MockCourierService{
-		ReturnCourier: model.Courier{ID: 123, Name: "Иван"},
+
+	tests := []struct {
+		name          string
+		id            string
+		mockErr       error
+		wantCode      int
+		wantCallCount int
+	}{
+		{
+			name:          "успех",
+			id:            "123",
+			wantCode:      http.StatusNoContent,
+			wantCallCount: 1,
+		},
+		{
+			name:          "нечисловой id",
+			id:            "abc",
+			wantCode:      http.StatusBadRequest,
+			wantCallCount: 0,
+		},
+		{
+			name:          "курьер не найден",
+			id:            "999",
+			mockErr:       model.ErrCourierNotFound,
+			wantCode:      http.StatusNotFound,
+			wantCallCount: 1,
+		},
+		{
+			name:          "ошибка бд",
+			id:            "123",
+			mockErr:       errors.New("connection refused"),
+			wantCode:      http.StatusInternalServerError,
+			wantCallCount: 1,
+		},
 	}
-	crh := &CourierHandler{serv: mockService}
 
-	router := chi.NewRouter()          
-	router.Get("/courier/{id}", crh.GetById)        
-	router.ServeHTTP(rr, req)                       
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("Ожидался статус 200, получили %d", rr.Code)
+			mockService := &MockCourierService{ReturnError: tt.mockErr}
+			crh := &CourierHandler{serv: mockService}
+
+			router := chi.NewRouter()
+			router.Delete("/courier/{id}", crh.Delete)
+
+			req := httptest.NewRequest(http.MethodDelete, "/courier/"+tt.id, nil)
+			rr := httptest.NewRecorder()
+
+			router.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("Ожидался %d, получили %d, тело: %s", tt.wantCode, rr.Code, rr.Body.String())
+			}
+			if mockService.CallCount != tt.wantCallCount {
+				t.Errorf("Ожидали %d вызовов, было %d", tt.wantCallCount, mockService.CallCount)
+			}
+			if tt.wantCode == http.StatusNoContent && rr.Body.String() != "" {
+				t.Errorf("При 204 тело должно быть пустым, получили %s", rr.Body.String())
+			}
+		})
 	}
 }
 
-func TestGetById_InvalidIDFormat (t *testing.T) {
+func TestCourierHandler_List(t *testing.T) {
 	t.Parallel()
-	req := httptest.NewRequest(http.MethodGet, "/courier/abc", nil)
-	rr := httptest.NewRecorder()
-	mockService := &MockCourierService{
-	}
-	crh := &CourierHandler{serv: mockService}
 
-	router := chi.NewRouter()          
-	router.Get("/courier/{id}", crh.GetById)        
-	router.ServeHTTP(rr, req)                       
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("Ожидался 400, получили %d", rr.Code)
+	tests := []struct {
+		name          string
+		couriers      []model.Courier
+		mockErr       error
+		wantCode      int
+	}{
+		{
+			name:          "успех",
+			couriers: []model.Courier{{ID: 1, Name: "Иван"}, {ID: 2, Name: "Пётр"}},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "пустой список",
+			couriers: []model.Courier{},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "ошибка бд",
+			mockErr:  errors.New("connection refused"),
+			wantCode: http.StatusInternalServerError,
+		},
 	}
-	if mockService.CallCount != 0 {
-		t.Errorf("Сервис не должен вызываться, вызван %d раз", mockService.CallCount)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockService := &MockCourierService{ReturnCouriers: tt.couriers, ReturnError: tt.mockErr}
+			crh := &CourierHandler{serv: mockService}
+
+			req := httptest.NewRequest(http.MethodGet, "/courier", nil)
+			rr := httptest.NewRecorder()
+
+			crh.List(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("Ожидался %d, получили %d", tt.wantCode, rr.Code)
+			}
+		})
 	}
 }
